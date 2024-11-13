@@ -12,7 +12,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 from decouple import config
-import pymysql
+import os
+from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-tl+_q(gudm!y)7)jlk-abib-=!^&bj#lhe)7es9vkb!=y-z&*+'
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -38,26 +39,37 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
+    'rest_framework', # Django REST Framework
+    'rest_framework_simplejwt.token_blacklist',  # Simple JWT 的黑名单功能
     'corsheaders', # 跨域配置
+    'storages',  # Django Storages
+    'accounts', # 用户管理模块
     
 ]
 
 # 设置Django AUTH 用户认证系统所需用户模型
 # 格式: 子应用名.模型名  -- 必须在数据第一次迁移时配置完成
-AUTH_USER_MODEL = "item.UsersModel"
+AUTH_USER_MODEL = "accounts.CustomUser"
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # 跨域配置中间件
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
+    'django.middleware.common.CommonMiddleware',  # 确保位于 CorsMiddleware 之后
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # 跨域配置中间件
 ]
+
+# CORS 配置
+CORS_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:5173/",  # Vue 前端开发地址
+    # "https://your-production-domain.com",  # 生产环境前端地址
+]
+
+# CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'django_workflow_items.urls'
 
@@ -124,6 +136,40 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Django REST Framework 配置
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',  # 使用 JWT 认证
+    ),
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',  # 默认需要认证
+    ],
+}
+
+# Simple JWT 配置
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # 访问令牌有效期
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # 刷新令牌有效期
+    'ROTATE_REFRESH_TOKENS': True,  # 刷新令牌后轮换
+    'BLACKLIST_AFTER_ROTATION': True,  # 刷新令牌轮换后加入黑名单
+
+    'ALGORITHM': 'HS256', # 使用HS256签名算法
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    
+    # 可选配置
+    'JTI_CLAIM': 'jti',  # 默认的 JWT ID 声明
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',  # 滑动令牌刷新过期时间声明
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
@@ -140,9 +186,25 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
+# 静态文件配置
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Azure Blob 容器 django-storages 配置
+AZURE_ACCOUNT_NAME = 'p5datablob' # 存储账户名称
+AZURE_CONTAINER = 'workflow-items' # 容器名称
+AZURE_ACCOUNT_KEY = config('AZURE_ACCOUNT_KEY') # 存储账户密钥
+AZURE_CUSTOM_DOMAIN = f'{AZURE_ACCOUNT_NAME}.blob.core.windows.net'
+
+# 使用 Azure Blob Storage 作为默认文件存储后端
+DEFAULT_AUTO_STORAGE = 'storages.backends.azure_storage.AzureStorage'
+
+AZURE_SSL = True # 使用HTTPS
+
+# 构建完整 MEDIA_URL
+MEDIA_URL = f'https://{AZURE_CUSTOM_DOMAIN}/{AZURE_CONTAINER}/'
