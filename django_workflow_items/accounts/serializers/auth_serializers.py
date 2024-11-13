@@ -1,51 +1,32 @@
 from rest_framework import serializers
-from .models import CustomUser
-from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from ..models import CustomUser, Department
+from .user_serializer import UserSerializer
+from .department_serializer import DepartmentSerializer
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
-class UserSerializer(serializers.ModelSerializer):
-    """
-    用户序列化器, 用于将用户模型转换为JSON格式。
-    """
-    avatar_url = serializers.SerializerMethodField(read_only=True)
-    
-    class Meta:
-        model = CustomUser
-        fields = [
-            # 定义需要序列化的字段
-            'id', 'username', 'email', 'date_joined', 
-            'department', 'position', 'work_status', 'current_location',
-            'date_of_joining', 'date_of_leaving', 'phone_number',
-            'emergency_contact', 'avatar', 'avatar_url',
-        ]
-        
-        # 指定只读字段, 防止通过前端修改
-        read_only_fields = ['id', 'date_joined', 'date_of_leaving', 'avatar_url']
-        
-    def get_avatar_url(self, obj):
-        """
-        获取用户头像的完整 URL。
-        如果用户上传了头像，则返回其 URL, 否则返回 None。
-        """
-        request = self.context.get('request')
-        if obj.avatar and hasattr(obj.avatar, 'url'):
-            return obj.avatar.url # Azure Blob Storage 已设置 MEDIA_URL
-        return None
-
+from django.contrib.auth import authenticate
 
 class RegisterSerializer(serializers.ModelSerializer):
     """
-    用户注册序列化器, 用于处理用户注册请求的数据验证和创建。
+    用户注册序列化器, 用于处理用户注册请求的数据验证和创建新用户。
+    包含密码和确认密码的验证, 以及头像文件的验证。
     """
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'}, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'}, label="确认密码")
-    
+    department_id = serializers.PrimaryKeyRelatedField(
+        queryset = Department.objects.all(),
+        source = 'department',
+        write_only = True,
+        required = False,
+        allow_null = True,
+        help_text = '所属部门ID'
+    )
+
     class Meta:
         model = CustomUser
         fields = [
             'username', 'email', 'gender', 'password', 'password_confirm',
-            'department', 'position', 'work_status', 'current_location',
+            'department_id', 'position', 'work_status', 'current_destination',
             'date_of_joining', 'phone_number', 'emergency_contact', 'avatar'
         ]
     
@@ -87,6 +68,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         user = CustomUser.objects.create_user(**validated_data)
         return user
+
     
 class LoginSerializer(TokenObtainPairSerializer):
     """
@@ -119,3 +101,19 @@ class LoginSerializer(TokenObtainPairSerializer):
                 raise serializers.ValidationError("提供的凭据无效!") 
         else:
             raise serializers.ValidationError("必须包含 'username'和'password'。")
+        
+    @classmethod
+    def get_token(cls, user):
+        """
+        重写 get_token 方法, 向令牌中添加自定义的声明。
+        """
+        token = super().get_token(user)
+        
+        # 添加自定义声明
+        token['email'] = user.email
+        token['username'] = user.username
+        token['department'] = user.department.name if user.department else None
+        token['position'] = user.position
+        token['work_status'] = user.work_status
+        
+        return token

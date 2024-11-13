@@ -208,3 +208,7 @@ AZURE_SSL = True # 使用HTTPS
 
 # 构建完整 MEDIA_URL
 MEDIA_URL = f'https://{AZURE_CUSTOM_DOMAIN}/{AZURE_CONTAINER}/'
+
+# 雪花算法配置
+SNOWFLAKE_WORKER_ID = 1 # 每个工作节点的唯一ID, 范围通常0-31
+SNOWFLAKE_DATACENTER_ID = 1 # 每个数据中心唯一ID

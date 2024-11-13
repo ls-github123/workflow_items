@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-import uuid
+from .utils import snowflake_generator
 
 class CustomUserManager(BaseUserManager):
     """
@@ -94,10 +94,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         ('inactive', '离职'),
     ]
     
-    # UUID4 -- 完全基于随机数生成
-    id = models.UUIDField(
+    # 使用BigIntegerField作为主键，存储雪花算法生成的ID
+    id = models.BigIntegerField(
         primary_key = True,
-        default = uuid.uuid4,
         editable=False, # 防止在Django Admin或表单中编辑
         verbose_name='用户ID'
     )
@@ -108,7 +107,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField('是否为管理员', default=False)
     is_active = models.BooleanField('是否活跃', default=True)
     date_joined = models.DateTimeField('添加时间', auto_now_add=True)
-    department = models.CharField('所属部门', max_length=50, blank=True, null=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, verbose_name='所属部门', related_name='users')
     position = models.CharField('负责职位', max_length=50, blank=True, null=True)
     work_status = models.CharField('工作状态', max_length=20, choices=WORK_STATUS_CHOICES, null=False, default='active')
     current_destination = models.CharField('当前去向', max_length=255, blank=True, null=True)
@@ -131,3 +130,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     
     def __str__(self):
         return self.username
+    
+    # 重写 save 方法, 确保再创建新用户是生成唯一的雪花ID
+    def save(self, *args, **kwargs):
+        if not self.id: # 仅在用户未拥有ID时生成新ID, 避免覆盖已有ID
+            self.id = snowflake_generator.generate_id()
+        super().save(*args, **kwargs)
